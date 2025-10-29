@@ -126,6 +126,7 @@ class OpenCVCamera(Camera):
 
         self.rotation: int | None = get_cv2_rotation(config.rotation)
         self.backend: int = get_cv2_backend()
+        self.dimensions_validated = False
 
         if self.height and self.width:
             self.capture_width, self.capture_height = self.width, self.height
@@ -233,15 +234,23 @@ class OpenCVCamera(Camera):
 
         actual_width = int(round(self.videocapture.get(cv2.CAP_PROP_FRAME_WIDTH)))
         if not width_success or self.capture_width != actual_width:
-            raise RuntimeError(
-                f"{self} failed to set capture_width={self.capture_width} ({actual_width=}, {width_success=})."
+            logger.warning(
+                f"{self} failed to set capture_width={self.capture_width} ({actual_width=}, {width_success=}). Using actual width {actual_width}."
             )
+            self.capture_width = actual_width
 
         actual_height = int(round(self.videocapture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         if not height_success or self.capture_height != actual_height:
-            raise RuntimeError(
-                f"{self} failed to set capture_height={self.capture_height} ({actual_height=}, {height_success=})."
+            logger.warning(
+                f"{self} failed to set capture_height={self.capture_height} ({actual_height=}, {height_success=}). Using actual height {actual_height}."
             )
+            self.capture_height = actual_height
+
+        # Update self.width and self.height based on actual capture dimensions and rotation
+        if self.rotation in [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]:
+            self.width, self.height = self.capture_height, self.capture_width
+        else:
+            self.width, self.height = self.capture_width, self.capture_height
 
     @staticmethod
     def find_cameras() -> list[dict[str, Any]]:
@@ -355,10 +364,25 @@ class OpenCVCamera(Camera):
 
         h, w, c = image.shape
 
-        if h != self.capture_height or w != self.capture_width:
-            raise RuntimeError(
-                f"{self} frame width={w} or height={h} do not match configured width={self.capture_width} or height={self.capture_height}."
-            )
+        # Resize image to expected dimensions if needed (for policy compatibility)
+        expected_width, expected_height = 1280, 720  # Air hockey policy expects this
+        if w != expected_width or h != expected_height:
+            logger.debug(f"Resizing image from {w}x{h} to {expected_width}x{expected_height}")
+            image = cv2.resize(image, (expected_width, expected_height), interpolation=cv2.INTER_LINEAR)
+            h, w = expected_height, expected_width
+
+        # Resize image to expected dimensions if needed (for policy compatibility)
+        expected_width, expected_height = 1280, 720  # Air hockey policy expects this
+        if w != expected_width or h != expected_height:
+            logger.debug(f"Resizing image from {w}x{h} to {expected_width}x{expected_height}")
+            image = cv2.resize(image, (expected_width, expected_height), interpolation=cv2.INTER_LINEAR)
+            h, w = expected_height, expected_width
+            # Update dimensions after resize
+            self.capture_width, self.capture_height = w, h
+            if self.rotation in [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]:
+                self.width, self.height = h, w
+            else:
+                self.width, self.height = w, h
 
         if c != 3:
             raise RuntimeError(f"{self} frame channels={c} do not match expected 3 channels (RGB/BGR).")

@@ -390,6 +390,10 @@ class RobotClient:
                 f"Popping action from queue to perform took {get_end:.6f}s | Queue size: {current_queue_size}"
             )
 
+        # Log the actual action values being sent to the robot
+        action_dict = self._action_tensor_to_action_dict(timed_action.get_action())
+        self.logger.info(f"Action #{timed_action.get_timestep()} sent to robot: {action_dict}")
+
         return _performed_action
 
     def _ready_to_send_observation(self):
@@ -404,6 +408,14 @@ class RobotClient:
 
             raw_observation: RawObservation = self.robot.get_observation()
             raw_observation["task"] = task
+
+            # Log camera image info for debugging
+            if "front" in raw_observation:
+                img = raw_observation["front"]
+                if hasattr(img, 'shape'):
+                    self.logger.info(f"Camera image shape: {img.shape}, dtype: {img.dtype}, range: [{img.min():.3f}, {img.max():.3f}]")
+                else:
+                    self.logger.info(f"Camera image type: {type(img)}")
 
             with self.latest_action_lock:
                 latest_action = self.latest_action

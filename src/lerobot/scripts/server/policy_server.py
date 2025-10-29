@@ -255,6 +255,10 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
             self.logger.debug(f"Skipping observation #{obs.get_timestep()} - Timestep predicted already!")
             return False
 
+        # For air hockey task, disable similarity filtering to ensure continuous movement
+        elif "Air Hockey" in str(obs.get_observation().get("task", "")):
+            return True
+
         elif observations_similar(obs, previous_obs, lerobot_features=self.lerobot_features):
             self.logger.debug(
                 f"Skipping observation #{obs.get_timestep()} - Observation too similar to last obs predicted!"
